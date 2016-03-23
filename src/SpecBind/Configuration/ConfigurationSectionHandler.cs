@@ -14,6 +14,7 @@ namespace SpecBind.Configuration
 	{
 		private const string ApplicationElementName = @"application";
 		private const string BrowserFactoryElementName = @"browserFactory";
+	    private const string PagesElementName = @"pages";
 
 		/// <summary>
 		/// Gets or sets the application configuration element.
@@ -51,12 +52,19 @@ namespace SpecBind.Configuration
 			}
 		}
 
-        /// <summary>
-        /// Creates the configuration node from XML.
-        /// </summary>
-        /// <param name="xmlContent">Content of the XML.</param>
-        /// <returns>The created configuration section.</returns>
-        public static ConfigurationSectionHandler CreateFromXml(string xmlContent)
+		/// <summary>
+		/// Gets or sets the pages configuration element.
+		/// </summary>
+		/// <value>The pages configuration element.</value>
+		[ConfigurationProperty(PagesElementName, DefaultValue = null, IsRequired = false)]
+		public PageCollection Pages => (PageCollection)this[PagesElementName];
+
+	    /// <summary>
+		/// Creates the configuration node from XML.
+		/// </summary>
+		/// <param name="xmlContent">Content of the XML.</param>
+		/// <returns>The created configuration section.</returns>
+		public static ConfigurationSectionHandler CreateFromXml(string xmlContent)
         {
             var section = new ConfigurationSectionHandler();
             section.Init();

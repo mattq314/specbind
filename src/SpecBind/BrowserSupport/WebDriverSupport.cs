@@ -108,7 +108,7 @@ namespace SpecBind.BrowserSupport
 
             this.objectContainer.RegisterInstanceAs<ISettingHelper>(new WrappedSettingHelper());
 
-            var mapper = new PageMapper();
+            var mapper = PageMapper.Instance;
             mapper.Initialize(browser.BasePageType);
             this.objectContainer.RegisterInstanceAs<IPageMapper>(mapper);
 

@@ -44,6 +44,7 @@
     <Reference Include="System" />
     <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Xml" />
     <Reference Include="TechTalk.SpecFlow, Version=2.0.0.0, Culture=neutral, PublicKeyToken=0778194805d6db41, processorArchitecture=MSIL">
       <HintPath>..\packages\SpecFlow.2.0.0\lib\net45\TechTalk.SpecFlow.dll</HintPath>
@@ -59,6 +60,10 @@
     </Reference>
     <Reference Include="TechTalk.SpecFlow.Utils, Version=2.0.0.0, Culture=neutral, PublicKeyToken=0778194805d6db41, processorArchitecture=MSIL">
       <HintPath>..\packages\SpecFlow.CustomPlugin.2.0.0\lib\net45\TechTalk.SpecFlow.Utils.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="WebDriver, Version=2.52.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Selenium.WebDriver.2.52.0\lib\net40\WebDriver.dll</HintPath>
       <Private>True</Private>
     </Reference>
   </ItemGroup>
@@ -77,6 +82,12 @@
     </Compile>
     <Compile Include="..\SpecBind\Configuration\ConfigurationSectionHandler.cs">
       <Link>Configuration\ConfigurationSectionHandler.cs</Link>
+    </Compile>
+    <Compile Include="..\SpecBind\Configuration\PageCollection.cs">
+      <Link>Configuration\PageCollection.cs</Link>
+    </Compile>
+    <Compile Include="..\SpecBind\Configuration\PageElement.cs">
+      <Link>Configuration\PageElement.cs</Link>
     </Compile>
     <Compile Include="Constants.cs" />
     <Compile Include="ISpecBindConfigurationProvider.cs" />
@@ -98,7 +109,12 @@
       <Link>stylecop.json</Link>
     </AdditionalFiles>
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="..\SpecBind\SpecBind.csproj">
+      <Project>{e27bd8d5-242f-496e-be3a-1c73a27e5275}</Project>
+      <Name>SpecBind</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
     <PostBuildEvent>mkdir "$(SolutionDir)\lib"

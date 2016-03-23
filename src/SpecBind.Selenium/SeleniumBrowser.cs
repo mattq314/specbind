@@ -2,6 +2,8 @@
 // Copyright © 2013 Dan Piessens  All rights reserved.
 // </copyright>
 
+using System.Diagnostics;
+
 namespace SpecBind.Selenium
 {
     using System;
@@ -9,6 +11,9 @@ namespace SpecBind.Selenium
     using System.Diagnostics.CodeAnalysis;
     using System.Drawing.Imaging;
     using System.IO;
+    using System.Reflection;
+    using System.Reflection.Emit;
+    using System.Xml;
 
     using OpenQA.Selenium;
 
@@ -285,7 +290,47 @@ namespace SpecBind.Selenium
                 this.switchedContext = false;
             }
 
-            Func<IWebDriver, IBrowser, Action<object>, object> pageBuildMethod;
+			var debug = new List<string>();
+			var elementsById = new List<string>();
+			//var elementsByName = 
+
+			var xReader = XmlReader.Create(new StringReader(webDriver.PageSource), new XmlReaderSettings { DtdProcessing = DtdProcessing.Parse });
+			while (xReader.Read())
+			{
+				switch (xReader.NodeType)
+				{
+					case XmlNodeType.Element:
+						var id = xReader.GetAttribute("id");
+						var name = xReader.GetAttribute("name");
+						var className = xReader.GetAttribute("class");
+						debug.Add(string.Format("<{0}> id: {1} name: {2} class: {3}", xReader.Name, id, name, className));
+
+						if (!string.IsNullOrWhiteSpace(id))
+						{
+							elementsById.Add(id);
+						}
+						//else if (!string.IsNullOrWhiteSpace(name))
+						//{
+						//	pageWebElements.Add(name);
+						//}
+						//else if (!string.IsNullOrWhiteSpace(className))
+						//{
+						//	pageWebElements.Add(className);
+						//}
+						break;
+				}
+			}
+
+		    var typeToPut = PageMapper.Instance.CreateType(pageType.Name, webDriver.Url, elementsById);
+
+			if (typeToPut != null)
+			{
+				pageType = typeToPut;
+				// this.pageCache.Remove(pageType);
+				// //this.pageCache.Add(typeToPut, null);
+			}
+
+			Func<IWebDriver, IBrowser, Action<object>, object> pageBuildMethod;
             if (!this.pageCache.TryGetValue(pageType, out pageBuildMethod))
             {
                 pageBuildMethod = this.pageBuilder.CreatePage(pageType);

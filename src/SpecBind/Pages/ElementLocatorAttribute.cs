@@ -13,14 +13,21 @@ namespace SpecBind.Pages
 	{
 	    private string tagName;
 
-	    #region Constructors and Destructors
+		#region Constructors and Destructors
 
 		/// <summary>
 		/// Finds a component based on its attributes.
 		/// </summary>
 		public ElementLocatorAttribute()
 		{
-			this.Index = -1;
+		}
+
+		/// <summary>
+		/// Finds a component based on its id.
+		/// </summary>
+		public ElementLocatorAttribute(string id)
+		{
+			this.Id = id;
 		}
 
 		#endregion
@@ -57,7 +64,7 @@ namespace SpecBind.Pages
 		/// <value>
 		/// The index.
 		/// </value>
-		public int Index { get; set; }
+		public int Index { get; set; } = -1;
 
 		/// <summary>
 		/// Gets or sets the element name to find.

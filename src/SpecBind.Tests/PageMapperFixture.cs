@@ -21,7 +21,7 @@ namespace SpecBind.Tests
 		[TestMethod]
 		public void TestMapAssemblyTypesWithNormalType()
 		{
-			var mapper = new PageMapper();
+			var mapper = PageMapper.Instance;
 			mapper.MapAssemblyTypes(new[] { typeof(string) }, typeof(TestBase));
 
 			Assert.AreEqual(0, mapper.MapCount);
@@ -33,7 +33,7 @@ namespace SpecBind.Tests
 		[TestMethod]
 		public void TestMapAssemblyTypesWithNonPrefixedPageName()
 		{
-			var mapper = new PageMapper();
+			var mapper = PageMapper.Instance;
 			mapper.MapAssemblyTypes(new[] { typeof(NoName) }, typeof(TestBase));
 
 			var type = mapper.GetTypeFromName("noname");
@@ -48,7 +48,7 @@ namespace SpecBind.Tests
 		[TestMethod]
 		public void TestMapAssemblyTypesWithPrefixedPageName()
 		{
-			var mapper = new PageMapper();
+			var mapper = PageMapper.Instance;
 			mapper.MapAssemblyTypes(new[] { typeof(MyPage) }, typeof(TestBase));
 
 			var type = mapper.GetTypeFromName("my");
@@ -65,7 +65,7 @@ namespace SpecBind.Tests
 		[TestMethod]
 		public void TestMapAssemblyTypesWithPrefixedPageNameAndAlias()
 		{
-			var mapper = new PageMapper();
+			var mapper = PageMapper.Instance;
 			mapper.MapAssemblyTypes(new[] { typeof(AliasPage) }, typeof(TestBase));
 
 			var type = mapper.GetTypeFromName("alias");
@@ -82,7 +82,7 @@ namespace SpecBind.Tests
 		[TestMethod]
 		public void TestGetTypeFromNameNullString()
 		{
-			var mapper = new PageMapper();
+			var mapper = PageMapper.Instance;
 			var nullType = mapper.GetTypeFromName(null);
 			var emptyType = mapper.GetTypeFromName(string.Empty);
 			var whitespaceType = mapper.GetTypeFromName("    ");

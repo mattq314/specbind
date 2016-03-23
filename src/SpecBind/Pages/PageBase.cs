@@ -10,6 +10,7 @@ namespace SpecBind.Pages
 	using System.Reflection;
 
 	using SpecBind.Actions;
+	using SpecBind.Configuration;
 	using SpecBind.PropertyHandlers;
 
     /// <summary>
@@ -372,6 +373,11 @@ namespace SpecBind.Pages
 			const BindingFlags Flags = BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public;
 
 			var pageType = this.PageType;
+
+			if (pageType == typeof(PageElement))
+			{
+				int test = 42;
+			}
 
 			var element = this.GetPageElement();
 			this.properties.Add(element.Name, element);
