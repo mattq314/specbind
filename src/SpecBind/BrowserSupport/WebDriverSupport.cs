@@ -145,13 +145,9 @@ namespace SpecBind.BrowserSupport
 
             this.objectContainer.RegisterInstanceAs<ISettingHelper>(new WrappedSettingHelper());
 
-<<<<<<< HEAD
             var mapper = PageMapper.Instance;
-            mapper.Initialize(browser.BasePageType);
-=======
-            var mapper = new PageMapper();
             mapper.Initialize(Browser.BasePageType);
->>>>>>> refs/remotes/dpiessens/master
+
             this.objectContainer.RegisterInstanceAs<IPageMapper>(mapper);
 
             this.objectContainer.RegisterTypeAs<ScenarioContextHelper, IScenarioContextHelper>();
