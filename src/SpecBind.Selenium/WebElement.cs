@@ -30,7 +30,7 @@ namespace SpecBind.Selenium
         /// <param name="searchContext">The driver used to search for elements.</param>
         protected internal WebElement(ISearchContext searchContext)
         {
-            this.searchContext = searchContext;
+            this.searchContext = searchContext; // searchContext.PageSource shows source of visited page.
 
             this.bys = new List<By>();
             this.Cache = true;

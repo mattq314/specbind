@@ -290,11 +290,12 @@ namespace SpecBind.Selenium
                 this.switchedContext = false;
             }
 
+			// TODO: how to know when to skip this because page is configured?  typeof(PageElement)?  Assembly name contains SpecBind.Runtime?  Other?
 			var debug = new List<string>();
 			var elementsById = new List<string>();
 			//var elementsByName = 
 
-			var xReader = XmlReader.Create(new StringReader(webDriver.PageSource), new XmlReaderSettings { DtdProcessing = DtdProcessing.Parse });
+			var xReader = XmlReader.Create(new StringReader(webDriver.PageSource), new XmlReaderSettings { DtdProcessing = DtdProcessing.Parse }); // TODO: webDriver.PageSource
 			while (xReader.Read())
 			{
 				switch (xReader.NodeType)
@@ -321,7 +322,7 @@ namespace SpecBind.Selenium
 				}
 			}
 
-		    var typeToPut = PageMapper.Instance.CreateType(pageType.Name, webDriver.Url, elementsById);
+			var typeToPut = PageMapper.Instance.CreateType(pageType.Name, webDriver.Url, elementsById);
 
 			if (typeToPut != null)
 			{

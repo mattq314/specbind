@@ -83,7 +83,7 @@ namespace SpecBind.Pages
 		[System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
 		public void Initialize(Type pageBaseType)
 		{
-			// There are several blank catches to avoid loading bad asssemblies.
+			// There are several blank catches to avoid loading bad assemblies.
 			try
 			{
 				foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && !a.GlobalAssemblyCache))
@@ -109,14 +109,13 @@ namespace SpecBind.Pages
 				var p = (PageElement)page;
 				var key = Sanitize(p.Url);
 
-				var type = CreateType(key + "Page", p.Url);
-				this.pageTypeCache.Add(key, type);
+				this.CreateType(key /*+ "Page"*/, p.Url);
 			}
 		}
 
 		internal Type CreateType(string typeName, string url, IList<string> elementsById = null)
 		{
-			// from https://msdn.microsoft.com/en-us/library/system.reflection.emit.typebuilder.createtype(v=vs.110).aspx
+			// from https://msdn.microsoft.com/en-us/library/2sd82fz7(v=vs.110).aspx
 			var asmName = new AssemblyName { Name = "SpecBind.Runtime" };
 			var asmBuild = Thread.GetDomain().DefineDynamicAssembly(asmName, AssemblyBuilderAccess.RunAndSave);
 			var modBuild = asmBuild.DefineDynamicModule("ModuleOne", asmName.Name + ".dll");
@@ -137,7 +136,32 @@ namespace SpecBind.Pages
 			{
 				foreach (var propertyName in elementsById)
 				{
+					FieldBuilder customerNameBldr = typeBuild.DefineField(propertyName.ToLower(),
+														typeof(string),
+														FieldAttributes.Private);
+
 					var propBuilder = typeBuild.DefineProperty(propertyName, PropertyAttributes.None, typeof(IWebElement), null);
+
+					// The property set and property get methods require a special
+					// set of attributes.
+					MethodAttributes getSetAttr =
+						MethodAttributes.Public | MethodAttributes.SpecialName |
+							MethodAttributes.HideBySig;
+
+					// Define the "get" accessor method for CustomerName.
+					MethodBuilder getPropMthdBldr =
+						typeBuild.DefineMethod("get_" + propertyName,
+												   getSetAttr,
+												   typeof(IWebElement),
+												   Type.EmptyTypes);
+
+					ILGenerator custNameGetIL = getPropMthdBldr.GetILGenerator();
+
+					custNameGetIL.Emit(OpCodes.Ldarg_0);
+					custNameGetIL.Emit(OpCodes.Ldfld, customerNameBldr);
+					custNameGetIL.Emit(OpCodes.Ret);
+
+					propBuilder.SetGetMethod(getPropMthdBldr);
 
 					var elemLocAttrType = typeof(ElementLocatorAttribute);
 					var elemLocAttrCtor = elemLocAttrType.GetConstructor(paramOfTypeString);
@@ -152,6 +176,7 @@ namespace SpecBind.Pages
 
 					attrBuilder = new CustomAttributeBuilder(elemLocAttrCtor, new object[] { propertyName }/*, locatorProperties, new object[] { propertyName }*/);
 					propBuilder.SetCustomAttribute(attrBuilder);
+					//propBuilder.SetCustomAttribute();
 					//propBuilder.GetCustomAttribute<ElementLocatorAttribute>().Id = propertyName; // invoked member is not supported in a dynamic module
 				}
 			}
