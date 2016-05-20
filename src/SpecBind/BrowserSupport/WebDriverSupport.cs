@@ -5,7 +5,8 @@
 namespace SpecBind.BrowserSupport
 {
     using System;
-    using System.Collections.Concurrent;
+    using System.Diagnostics;
+    using System.Diagnostics.CodeAnalysis;
     using System.IO;
 
     using BoDi;
@@ -23,11 +24,12 @@ namespace SpecBind.BrowserSupport
     /// A hooks support class for the web driver.
     /// </summary>
     [Binding]
-    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+    [ExcludeFromCodeCoverage]
     public class WebDriverSupport
     {
-        private static IBrowser browser;
-        private static Lazy<ConfigurationSectionHandler> configurationHandler = new Lazy<ConfigurationSectionHandler>(SettingHelper.GetConfigurationSection);
+        private static Lazy<ConfigurationSectionHandler> configurationHandler =
+            new Lazy<ConfigurationSectionHandler>(SettingHelper.GetConfigurationSection);
+
         private readonly IObjectContainer objectContainer;
 
         /// <summary>
@@ -45,18 +47,7 @@ namespace SpecBind.BrowserSupport
         /// <value>
         /// The web browser.
         /// </value>
-        internal static IBrowser Browser
-        {
-            get
-            {
-                return browser;
-            }
-
-            set
-            {
-                browser = value;
-            }
-        }
+        internal static IBrowser Browser { get; set; }
 
         /// <summary>
         /// Sets the configuration method for testing.
@@ -73,6 +64,25 @@ namespace SpecBind.BrowserSupport
         }
 
         /// <summary>
+        /// Things to do before each test run.
+        /// </summary>
+        [BeforeTestRun]
+        public static void BeforeTestRun()
+        {
+            LogDebug(() => "Start Test Run");
+            CheckForDriver();
+        }
+
+        /// <summary>
+        /// Things to do after each test run.
+        /// </summary>
+        [AfterTestRun]
+        public static void AfterTestRun()
+        {
+            LogDebug(() => "End Test Run");
+        }
+
+        /// <summary>
         /// Checks the browser factory for any necessary drivers.
         /// </summary>
         [BeforeTestRun]
@@ -83,9 +93,27 @@ namespace SpecBind.BrowserSupport
         }
 
         /// <summary>
-        /// Initializes the page mapper at the start of the test run.
+        /// Things to do before each feature.
+        /// </summary>
+        public static void BeforeFeature()
+        {
+            LogDebug(() => "Feature: " + FeatureContext.Current.FeatureInfo.Title);
+        }
+
+        /// <summary>
+        /// Things to do before each scenario.
         /// </summary>
         [BeforeScenario(Order = 100)]
+        public void BeforeScenario()
+        {
+            LogDebug(() => "Scenario: " + ScenarioContext.Current.ScenarioInfo.Title);
+            this.InitializeDriver();
+            ScenarioContext.Current.Set(Browser, "CurrentBrowser");
+        }
+
+        /// <summary>
+        /// Initializes the page mapper at the start of the test run.
+        /// </summary>
         public void InitializeDriver()
         {
             this.objectContainer.RegisterTypeAs<ProxyLogger, ILogger>();
@@ -94,22 +122,36 @@ namespace SpecBind.BrowserSupport
             var factory = BrowserFactory.GetBrowserFactory(logger);
             var configSection = configurationHandler.Value;
 
-            if (!configSection.BrowserFactory.ReuseBrowser || browser == null)
+            bool reusingBrowser = true;
+            if (!configSection.BrowserFactory.ReuseBrowser || Browser == null || Browser.IsDisposed)
             {
-                browser = factory.GetBrowser();
+                Browser = factory.GetBrowser();
+                reusingBrowser = false;
             }
 
             if (configSection.BrowserFactory.EnsureCleanSession)
             {
-                browser.ClearCookies();
+                Browser.ClearCookies();
+
+                if (reusingBrowser)
+                {
+                    Browser.ClearUrl();
+                }
             }
 
-            this.objectContainer.RegisterInstanceAs(browser, dispose: true);
+            // NOTE: Don't register the browser to dispose, since doing so breaks the reuseBrowser support.
+            // We will dispose it after scenario or test run as appropriate.
+            this.objectContainer.RegisterInstanceAs(Browser, dispose: false);
 
             this.objectContainer.RegisterInstanceAs<ISettingHelper>(new WrappedSettingHelper());
 
+<<<<<<< HEAD
             var mapper = PageMapper.Instance;
             mapper.Initialize(browser.BasePageType);
+=======
+            var mapper = new PageMapper();
+            mapper.Initialize(Browser.BasePageType);
+>>>>>>> refs/remotes/dpiessens/master
             this.objectContainer.RegisterInstanceAs<IPageMapper>(mapper);
 
             this.objectContainer.RegisterTypeAs<ScenarioContextHelper, IScenarioContextHelper>();
@@ -124,17 +166,175 @@ namespace SpecBind.BrowserSupport
         }
 
         /// <summary>
+        /// Things to do after every step.
+        /// </summary>
+        [BeforeStep]
+        public void BeforeStep()
+        {
+            LogDebug(
+                () =>
+                {
+                    var scenarioContextHelper = this.objectContainer.Resolve<IScenarioContextHelper>();
+                    return scenarioContextHelper.GetCurrentStepText();
+                });
+        }
+
+        /// <summary>
+        /// Things to do after every step.
+        /// </summary>
+        [AfterStep]
+        public void AfterStep()
+        {
+            var configSection = configurationHandler.Value;
+
+            switch (configSection.BrowserFactory.WaitForPendingAjaxCallsVia.ToLowerInvariant())
+            {
+                case "angular":
+                    this.WaitForAngular(configSection.BrowserFactory.PageLoadTimeout);
+                    break;
+
+                case "jquery":
+                    this.WaitForjQuery(configSection.BrowserFactory.PageLoadTimeout);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Wait for all Angular pending AJAX requests to complete
+        /// </summary>
+        /// <param name="timeout">The duration after which to stop waiting.</param>
+        public void WaitForAngular(TimeSpan timeout)
+        {
+            WaitForAngular(Convert.ToInt32(timeout.TotalSeconds));
+        }
+
+        /// <summary>
+        /// Wait for all Angular pending AJAX requests to complete
+        /// </summary>
+        /// <param name="secondsToWait">The duration after which to stop waiting.</param>
+        public static void WaitForAngular(int secondsToWait = 30)
+        {
+            if (Browser == null)
+            {
+                return;
+            }
+
+            if (Browser.IsDisposed)
+            {
+                return;
+            }
+
+            if (Browser.IsClosed)
+            {
+                return;
+            }
+
+            if (!Browser.Url.StartsWith("http"))
+            {
+                return;
+            }
+
+            var timeout = TimeSpan.FromSeconds(secondsToWait);
+            var waitInterval = TimeSpan.FromMilliseconds(500);
+            var waiter = new Waiter(timeout, waitInterval);
+
+            try
+            {
+                waiter.WaitFor(
+                    () =>
+                    {
+                        var pendingRequests = GetAngularPendingRequestCount();
+                        if (pendingRequests <= 0)
+                        {
+                            return true;
+                        }
+
+                        LogDebug(
+                            () =>
+                                string.Format(
+                                    "    (WebDriverSupport.WaitForAngular: {0} pending requests)",
+                                    pendingRequests));
+                        return false;
+                    });
+            }
+            catch (TimeoutException)
+            {
+                throw new ElementExecuteException("Angular pending requests not completed within {0}", timeout);
+            }
+        }
+
+        /// <summary>
+        /// Wait for all jQuery pending AJAX requests to complete
+        /// </summary>
+        /// <param name="timeout">The duration after which to stop waiting.</param>
+        public void WaitForjQuery(TimeSpan timeout)
+        {
+            WaitForjQuery(Convert.ToInt32(timeout.TotalSeconds));
+        }
+
+        /// <summary>
+        /// Wait for all jQuery pending AJAX requests to complete
+        /// </summary>
+        /// <param name="secondsToWait">The duration after which to stop waiting.</param>
+        public static void WaitForjQuery(int secondsToWait = 30)
+        {
+            if (Browser == null)
+            {
+                return;
+            }
+
+            if (Browser.IsDisposed)
+            {
+                return;
+            }
+
+            if (Browser.IsClosed)
+            {
+                return;
+            }
+
+            if (!Browser.Url.StartsWith("http"))
+            {
+                return;
+            }
+
+            var timeout = TimeSpan.FromSeconds(secondsToWait);
+            var waitInterval = TimeSpan.FromMilliseconds(500);
+            var waiter = new Waiter(timeout, waitInterval);
+
+            try
+            {
+                waiter.WaitFor(
+                    () =>
+                    {
+                        var activeCount = GetjQueryActive();
+                        if (activeCount <= 0)
+                        {
+                            return true;
+                        }
+
+                        LogDebug(() => "    (WebDriverSupport.WaitForjQuery: still active)");
+                        return false;
+                    });
+            }
+            catch (TimeoutException)
+            {
+                throw new ElementExecuteException("jQuery activity not completed within {0}", timeout);
+            }
+        }
+
+        /// <summary>
         /// Tears down the web driver
         /// </summary>
         [AfterTestRun]
         public static void TearDownAfterTestRun()
         {
-            if (browser == null)
+            if (Browser == null)
             {
                 return;
             }
 
-            browser.Close(dispose: true);
+            Browser.Close(dispose: true);
         }
 
         /// <summary>
@@ -158,22 +358,30 @@ namespace SpecBind.BrowserSupport
         /// </summary>
         public static void TearDownAfterScenario()
         {
-            if (browser == null)
+            if (Browser == null)
             {
                 return;
             }
 
-            var configSection = configurationHandler.Value;
-            if (!configSection.BrowserFactory.ReuseBrowser)
+            try
             {
-                try
+                var configSection = configurationHandler.Value;
+                if (configSection.BrowserFactory.ReuseBrowser)
                 {
-                    browser.Close(dispose: true);
+                    return;
                 }
-                finally
-                {
-                    browser = null;
-                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                Browser.Close(dispose: true);
+            }
+            finally
+            {
+                Browser = null;
             }
         }
 
@@ -183,15 +391,18 @@ namespace SpecBind.BrowserSupport
         public void CheckForScreenshot()
         {
             var scenarioHelper = this.objectContainer.Resolve<IScenarioContextHelper>();
-            if (scenarioHelper.GetError() == null)
+            var ex = scenarioHelper.GetError();
+            if (ex == null)
             {
                 return;
             }
 
+            LogDebug(() => ex.GetType().Name + ": " + ex.Message);
+
             var fileName = scenarioHelper.GetStepFileName();
             var basePath = Directory.GetCurrentDirectory();
-            var fullPath = browser.TakeScreenshot(basePath, fileName);
-            browser.SaveHtml(basePath, fileName);
+            var fullPath = Browser.TakeScreenshot(basePath, fileName);
+            Browser.SaveHtml(basePath, fileName);
 
             var traceListener = this.objectContainer.Resolve<ITraceListener>();
             if (fullPath != null && traceListener != null)
@@ -201,12 +412,57 @@ namespace SpecBind.BrowserSupport
 
             try
             {
-                browser.Close(dispose: true);
+                Browser.Close(dispose: true);
             }
             finally
             {
-                browser = null;
+                Browser = null;
             }
+        }
+
+        private static int GetAngularPendingRequestCount()
+        {
+            try
+            {
+                return
+                    Convert.ToInt32(
+                        Browser.ExecuteScript(
+                            @"return angular.element(document.body).injector().get('$http').pendingRequests.length;"));
+            }
+            catch (InvalidOperationException ex)
+            {
+                LogDebug(
+                    () =>
+                        string.Format(
+                            ":-( WebDriverSupport.GetAngularPendingRequestCount: " + ex.GetType().Name + ": "
+                            + ex.Message));
+                return -1;
+            }
+        }
+
+        private static int GetjQueryActive()
+        {
+            try
+            {
+                return Convert.ToInt32(Browser.ExecuteScript(@"return jQuery.active;"));
+            }
+            catch (InvalidOperationException ex)
+            {
+                LogDebug(
+                    () =>
+                        string.Format(":-( WebDriverSupport.GetjQueryActive: " + ex.GetType().Name + ": " + ex.Message));
+                return -1;
+            }
+        }
+
+        private static void LogDebug(Func<string> messageGenerator)
+        {
+            if (!Debugger.IsAttached)
+            {
+                return;
+            }
+
+            Debug.WriteLine(messageGenerator());
         }
     }
 }

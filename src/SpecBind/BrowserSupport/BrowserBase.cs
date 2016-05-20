@@ -7,6 +7,7 @@ namespace SpecBind.BrowserSupport
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
 
     using SpecBind.Actions;
     using SpecBind.Pages;
@@ -44,12 +45,17 @@ namespace SpecBind.BrowserSupport
         public abstract string Url { get; }
 
         /// <summary>
+        /// Gets a value indicating whether or not the browser has been closed.
+        /// </summary>
+        public bool IsClosed { get; private set; }
+
+        /// <summary>
         /// Gets a value indicating whether this instance is disposed.
         /// </summary>
         /// <value>
         /// <c>true</c> if this instance is disposed; otherwise, <c>false</c>.
         /// </value>
-        internal bool IsDisposed
+        public bool IsDisposed
         {
             get { return this.disposed; }
         }
@@ -66,9 +72,21 @@ namespace SpecBind.BrowserSupport
         public abstract void AddCookie(string name, string value, string path, DateTime? expireDateTime, string domain, bool secure);
 
         /// <summary>
+        /// Get a cookie from the browser
+        /// </summary>
+        /// <param name="name">The name of the cookie</param>
+        /// <returns>The cookie (if exists)</returns>
+        public abstract Cookie GetCookie(string name);
+
+        /// <summary>
         /// Clear all browser cookies
         /// </summary>
         public abstract void ClearCookies();
+
+        /// <summary>
+        /// Clears the URL.
+        /// </summary>
+        public abstract void ClearUrl();
 
         /// <summary>
         /// Closes this instance.
@@ -82,10 +100,13 @@ namespace SpecBind.BrowserSupport
         public void Close(bool dispose)
         {
             this.Close();
+
             if (dispose)
             {
                 this.Dispose();
             }
+
+            this.IsClosed = true;
         }
 
         /// <summary>
@@ -232,12 +253,12 @@ namespace SpecBind.BrowserSupport
         /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
         protected void Dispose(bool disposing)
         {
-            if (!disposing || this.disposed)
+            if (this.disposed)
             {
                 return;
             }
 
-            this.DisposeWindow();
+            this.DisposeWindow(disposing);
 
             this.disposed = true;
         }
@@ -260,6 +281,7 @@ namespace SpecBind.BrowserSupport
         /// <summary>
         /// Releases windows and driver specific resources. This method is already protected by the base instance.
         /// </summary>
-        protected abstract void DisposeWindow();
+        /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
+        protected abstract void DisposeWindow(bool disposing);
     }
 }
