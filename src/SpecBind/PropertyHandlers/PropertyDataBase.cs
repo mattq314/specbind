@@ -16,9 +16,9 @@ namespace SpecBind.PropertyHandlers
     /// A base class to define all the properties.
     /// </summary>
     /// <typeparam name="TElement">The type of the t element.</typeparam>
-    internal abstract class PropertyDataBase<TElement> : IPropertyData
+    public abstract class PropertyDataBase<TElement> : IPropertyData
     {
-        private readonly IPageElementHandler<TElement> elementHandler;
+		protected readonly IPageElementHandler<TElement> elementHandler;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PropertyDataBase{TElement}" /> class.

@@ -5,39 +5,46 @@
 namespace SpecBind.Selenium
 {
     using System;
+    using System.Collections.Generic;
     using System.Drawing;
+    using System.IO;
+    using System.Linq;
     using System.Reflection;
     using System.Runtime.Remoting.Messaging;
     using System.Threading;
+    using System.Xml;
 
     using OpenQA.Selenium;
     using OpenQA.Selenium.Support.UI;
 
     using SpecBind.Actions;
+    using SpecBind.Configuration;
     using SpecBind.Helpers;
     using SpecBind.Pages;
+    using SpecBind.PropertyHandlers;
 
-    /// <summary>
+	/// <summary>
     /// An implementation of <see cref="IPage"/> for the Selenium driver.
     /// </summary>
-    public class SeleniumPage : PageBase<object, IWebElement>
-    {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="SeleniumPage"/> class.
-        /// </summary>
-        /// <param name="nativePage">The native page.</param>
-        public SeleniumPage(object nativePage)
-            : base(nativePage.GetType(), nativePage)
+    public class SeleniumPage/*<TElement>*/ : PageBase<object, IWebElement>, IPageElementHandler<IWebElement>
+		//where TElement : IWebElement
+	{
+		/// <summary>
+		/// Initializes a new instance of the <see cref="SeleniumPage"/> class.
+		/// </summary>
+		/// <param name="nativePage">The native page.</param>
+		public SeleniumPage(object nativePage, string pageSource = null, string url = null)
+            : base(nativePage.GetType(), nativePage, pageSource, url)
         {
         }
 
-        /// <summary>
-        /// Gets or sets a delegate to set the ElementLocateTimeout.
-        /// </summary>
-        /// <value>
-        /// A delegate to set the ElementLocateTimeout.
-        /// </value>
-        public Action<TimeSpan, Action> ExecuteWithElementLocateTimeout { get; set; }
+		/// <summary>
+		/// Gets or sets a delegate to set the ElementLocateTimeout.
+		/// </summary>
+		/// <value>
+		/// A delegate to set the ElementLocateTimeout.
+		/// </value>
+		public Action<TimeSpan, Action> ExecuteWithElementLocateTimeout { get; set; }
 
         /// <summary>
         /// Gets or sets a delegate to set the ElementLocateTimeout.
@@ -154,12 +161,114 @@ namespace SpecBind.Selenium
             return this.CreatePageFromElement(element);
         }
 
-        /// <summary>
-        /// Clicks the element.
-        /// </summary>
-        /// <param name="element">The element.</param>
-        /// <returns><c>true</c> if the element is clicked, <c>false</c> otherwise.</returns>
-        public override bool ClickElement(IWebElement element)
+		/// <summary>
+		/// Gets the properties.
+		/// </summary>
+		protected override void GetProperties()
+		{
+			const BindingFlags Flags = BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public;
+
+			var pageType = this.PageType;
+
+			// TODO: how to know when to skip this because page is configured?  typeof(PageElement)?  Assembly name contains SpecBind.Runtime?  Other?
+			var debug = new List<string>();
+			var elementsById = new Dictionary<string, IWebElement>();
+			//var elementsByName = 
+
+			var xReader = XmlReader.Create(new StringReader(this.PageSource), new XmlReaderSettings { DtdProcessing = DtdProcessing.Parse });
+			while (xReader.Read())
+			{
+				switch (xReader.NodeType)
+				{
+					case XmlNodeType.Element:
+						var id = xReader.GetAttribute("id");
+						var name = xReader.GetAttribute("name");
+						var className = xReader.GetAttribute("class");
+						debug.Add(string.Format("<{0}> id: {1} name: {2} class: {3}", xReader.Name, id, name, className));
+
+						if (!string.IsNullOrWhiteSpace(id))
+						{
+							elementsById.Add(id, new WebElement(null));
+						}
+						//else if (!string.IsNullOrWhiteSpace(name))
+						//{
+						//	pageWebElements.Add(name);
+						//}
+						//else if (!string.IsNullOrWhiteSpace(className))
+						//{
+						//	pageWebElements.Add(className);
+						//}
+						break;
+				}
+			}
+
+			var typeToPut = PageMapper.Instance.CreateType(pageType.Name, Url, elementsById.Keys.ToList());
+
+			if (typeToPut != null)
+			{
+				pageType = typeToPut;
+				// TODO?
+				// this.pageCache.Remove(pageType);
+				// //this.pageCache.Add(typeToPut, null);
+			}
+
+			var element = this.GetPageElement();
+			this.Properties.Add(element.Name, element);
+
+			//var locatorElement = this.GetNativePage<IElementProvider>();
+			//if (locatorElement != null)
+			//{
+			//	foreach (var property in locatorElement.GetElements())
+			//	{
+			//		var propertyData = new ElementPropertyData<TElement>(
+			//								this, property.PropertyName, property.PropertyType, AddValueProperty(property));
+
+			//		this.properties.Add(propertyData.Name, propertyData);
+			//	}
+
+			//	return;
+			//}
+
+			foreach (var propertyInfo in pageType.GetProperties(Flags).Where(
+					p => p.CanRead && (this.SupportedPropertyType(p.PropertyType) || p.PropertyType.IsElementListType()) && this.TypeIsNotBaseClass(p)))
+			{
+				PropertyDataBase<IWebElement> propertyData;
+
+				if (typeof(IWebElement).IsAssignableFrom(propertyInfo.PropertyType))
+				{
+					var elementHandler = AddElementProperty(pageType, propertyInfo);
+					var elementPropertyData = new ElementPropertyData<IWebElement>(this, propertyInfo.Name, propertyInfo.PropertyType, elementHandler);
+
+					// Check for any alias attributes and attempt to build additional properties
+					this.CheckForVirtualProperties(propertyInfo, elementHandler);
+					propertyData = elementPropertyData;
+				}
+				else if (propertyInfo.PropertyType.IsElementListType())
+				{
+					var expressions = AddProperty(pageType, propertyInfo);
+					propertyData = new ListPropertyData<IWebElement>(this, propertyInfo.Name, propertyInfo.PropertyType, expressions.Item1);
+				}
+				else
+				{
+					var expressions = AddProperty(pageType, propertyInfo);
+					propertyData = new PagePropertyData<IWebElement>(
+						this,
+						propertyInfo.Name,
+						propertyInfo.PropertyType,
+						expressions.Item1,
+						expressions.Item2);
+				}
+
+				this.Properties.Add(propertyData.Name, propertyData);
+			}
+		}
+
+		/// <summary>
+		/// Clicks the element.
+		/// </summary>
+		/// <param name="element">The element.</param>
+		/// <returns><c>true</c> if the element is clicked, <c>false</c> otherwise.</returns>
+		public override bool ClickElement(IWebElement element)
         {
             return this.ClickElement(element, times: 1);
         }

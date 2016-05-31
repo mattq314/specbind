@@ -345,47 +345,6 @@ namespace SpecBind.Selenium
                 this.switchedContext = false;
             }
 
-			// TODO: how to know when to skip this because page is configured?  typeof(PageElement)?  Assembly name contains SpecBind.Runtime?  Other?
-			var debug = new List<string>();
-			var elementsById = new List<string>();
-			//var elementsByName = 
-
-			var xReader = XmlReader.Create(new StringReader(webDriver.PageSource), new XmlReaderSettings { DtdProcessing = DtdProcessing.Parse }); // TODO: webDriver.PageSource
-			while (xReader.Read())
-			{
-				switch (xReader.NodeType)
-				{
-					case XmlNodeType.Element:
-						var id = xReader.GetAttribute("id");
-						var name = xReader.GetAttribute("name");
-						var className = xReader.GetAttribute("class");
-						debug.Add(string.Format("<{0}> id: {1} name: {2} class: {3}", xReader.Name, id, name, className));
-
-						if (!string.IsNullOrWhiteSpace(id))
-						{
-							elementsById.Add(id);
-						}
-						//else if (!string.IsNullOrWhiteSpace(name))
-						//{
-						//	pageWebElements.Add(name);
-						//}
-						//else if (!string.IsNullOrWhiteSpace(className))
-						//{
-						//	pageWebElements.Add(className);
-						//}
-						break;
-				}
-			}
-
-			var typeToPut = PageMapper.Instance.CreateType(pageType.Name, webDriver.Url, elementsById);
-
-			if (typeToPut != null)
-			{
-				pageType = typeToPut;
-				// this.pageCache.Remove(pageType);
-				// //this.pageCache.Add(typeToPut, null);
-			}
-
 			Func<IWebDriver, IBrowser, Action<object>, object> pageBuildMethod;
             if (!this.pageCache.TryGetValue(pageType, out pageBuildMethod))
             {
@@ -395,11 +354,10 @@ namespace SpecBind.Selenium
 
             var nativePage = pageBuildMethod(webDriver, this, null);
 
-            return new SeleniumPage(nativePage)
+            return new SeleniumPage(nativePage, webDriver.PageSource, webDriver.Url)
                    {
                        ExecuteWithElementLocateTimeout = this.ExecuteWithElementLocateTimeout,
-                       EvaluateWithElementLocateTimeout =
-                           this.EvaluateWithElementLocateTimeout
+                       EvaluateWithElementLocateTimeout = this.EvaluateWithElementLocateTimeout
                    };
         }
 

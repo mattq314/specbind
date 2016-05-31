@@ -5,9 +5,13 @@ namespace SpecBind.Pages
 {
 	using System;
 	using System.Collections.Generic;
+	using System.IO;
 	using System.Linq;
 	using System.Linq.Expressions;
 	using System.Reflection;
+	using System.Xml;
+
+	using OpenQA.Selenium;
 
 	using SpecBind.Actions;
 	using SpecBind.Configuration;
@@ -24,8 +28,8 @@ namespace SpecBind.Pages
 	{
 		#region Fields
 
-		private readonly Dictionary<string, PropertyDataBase<TElement>> properties;
-        private readonly TPageBase page;
+		protected readonly IDictionary<string, PropertyDataBase<TElement>> Properties;
+		protected readonly TPageBase Page;
 
 		#endregion
 
@@ -36,11 +40,14 @@ namespace SpecBind.Pages
         /// </summary>
         /// <param name="pageType">Type of the page.</param>
         /// <param name="page">The page.</param>
-		protected PageBase(Type pageType, TPageBase page)
+		protected PageBase(Type pageType, TPageBase page, string pageSource = null, string url = null)
 		{
-		    this.page = page;
+		    this.Page = page;
 			this.PageType = pageType;
-			this.properties = new Dictionary<string, PropertyDataBase<TElement>>(StringComparer.InvariantCultureIgnoreCase);
+			this.PageSource = pageSource;
+			this.Url = url;
+
+			this.Properties = new Dictionary<string, PropertyDataBase<TElement>>(StringComparer.InvariantCultureIgnoreCase);
 			this.GetProperties();
 		}
 
@@ -56,20 +63,26 @@ namespace SpecBind.Pages
 		/// </value>
 		public virtual Type PageType { get; private set; }
 
+		//public IWebDriver WebDriver { get; private set; }
+
+		public string PageSource { get; private set; }
+
+		public string Url { get; private set; }
+
 		#endregion
 
 		#region Public Methods and Operators
 
-        /// <summary>
-        /// Gets the native page object.
-        /// </summary>
-        /// <typeparam name="TPage">The type of the page.</typeparam>
-        /// <returns>
-        /// The native page object.
-        /// </returns>
-        public virtual TPage GetNativePage<TPage>() where TPage : class
+		/// <summary>
+		/// Gets the native page object.
+		/// </summary>
+		/// <typeparam name="TPage">The type of the page.</typeparam>
+		/// <returns>
+		/// The native page object.
+		/// </returns>
+		public virtual TPage GetNativePage<TPage>() where TPage : class
         {
-            return this.page as TPage;
+            return this.Page as TPage;
         }
 
 		/// <summary>
@@ -81,7 +94,7 @@ namespace SpecBind.Pages
 		/// </returns>
 		public IEnumerable<string> GetPropertyNames(Func<IPropertyData, bool> filter)
 		{
-			return this.properties.Values.Where(filter).Select(p => p.Name);
+			return this.Properties.Values.Where(filter).Select(p => p.Name);
 		}
 
 		/// <summary>
@@ -106,7 +119,7 @@ namespace SpecBind.Pages
 		public bool TryGetElement(string key, out IPropertyData propertyData)
 		{
 			PropertyDataBase<TElement> item;
-			if (this.properties.TryGetValue(key, out item) && item.IsElement)
+			if (this.Properties.TryGetValue(key, out item) && item.IsElement)
 			{
 				propertyData = item;
 				return true;
@@ -131,7 +144,7 @@ namespace SpecBind.Pages
 		public bool TryGetProperty(string key, out IPropertyData propertyData)
 		{
 			PropertyDataBase<TElement> item;
-			if (this.properties.TryGetValue(key, out item))
+			if (this.Properties.TryGetValue(key, out item))
 			{
 				propertyData = item;
 				return true;
@@ -272,13 +285,83 @@ namespace SpecBind.Pages
             return type.IsClass;
         }
 
-        /// <summary>
-        /// Adds the element property.
-        /// </summary>
-        /// <param name="pageType">Type of the page.</param>
-        /// <param name="propertyInfo">The property info.</param>
-        /// <returns>The created element locator function.</returns>
-        private static Func<IPage, Func<TElement, bool>, bool> AddElementProperty(Type pageType, PropertyInfo propertyInfo)
+		/// <summary>
+		/// Gets the page element.
+		/// </summary>
+		/// <returns>The page element.</returns>
+		protected virtual ElementPropertyData<TElement> GetPageElement()
+		{
+			//Note the word 'page' as a property representing the element
+			return new ElementPropertyData<TElement>(this, "Page", this.PageType, (p, func) => func(this.GetNativePage<TElement>()));
+		}
+
+		/// <summary>
+		/// Gets the properties.
+		/// </summary>
+		protected virtual void GetProperties()
+		{
+			const BindingFlags Flags = BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public;
+
+			var pageType = this.PageType;
+
+			var element = this.GetPageElement();
+			this.Properties.Add(element.Name, element);
+
+			var locatorElement = this.GetNativePage<IElementProvider>();
+			if (locatorElement != null)
+			{
+				foreach (var property in locatorElement.GetElements())
+				{
+					var propertyData = new ElementPropertyData<TElement>(
+											this, property.PropertyName, property.PropertyType, AddValueProperty(property));
+
+					this.Properties.Add(propertyData.Name, propertyData);
+				}
+
+				return;
+			}
+
+			foreach (var propertyInfo in pageType.GetProperties(Flags).Where(
+												p => p.CanRead && (this.SupportedPropertyType(p.PropertyType) || p.PropertyType.IsElementListType()) && this.TypeIsNotBaseClass(p)))
+			{
+				PropertyDataBase<TElement> propertyData;
+
+				if (typeof(TElement).IsAssignableFrom(propertyInfo.PropertyType))
+				{
+					var elementHandler = AddElementProperty(pageType, propertyInfo);
+					var elementPropertyData = new ElementPropertyData<TElement>(this, propertyInfo.Name, propertyInfo.PropertyType, elementHandler);
+
+					// Check for any alias attributes and attempt to build additional properties
+					this.CheckForVirtualProperties(propertyInfo, elementHandler);
+					propertyData = elementPropertyData;
+				}
+				else if (propertyInfo.PropertyType.IsElementListType())
+				{
+					var expressions = AddProperty(pageType, propertyInfo);
+					propertyData = new ListPropertyData<TElement>(this, propertyInfo.Name, propertyInfo.PropertyType, expressions.Item1);
+				}
+				else
+				{
+					var expressions = AddProperty(pageType, propertyInfo);
+					propertyData = new PagePropertyData<TElement>(
+						this,
+						propertyInfo.Name,
+						propertyInfo.PropertyType,
+						expressions.Item1,
+						expressions.Item2);
+				}
+
+				this.Properties.Add(propertyData.Name, propertyData);
+			}
+		}
+
+		/// <summary>
+		/// Adds the element property.
+		/// </summary>
+		/// <param name="pageType">Type of the page.</param>
+		/// <param name="propertyInfo">The property info.</param>
+		/// <returns>The created element locator function.</returns>
+		protected static Func<IPage, Func<TElement, bool>, bool> AddElementProperty(Type pageType, PropertyInfo propertyInfo)
 		{
 			Expression<Func<IPage, TPageBase>> nativePageFunc = p => p.GetNativePage<TPageBase>();
 			var pageArgument = Expression.Parameter(typeof(IPage), "page");
@@ -314,13 +397,13 @@ namespace SpecBind.Pages
                           .Compile();
         }
 
-        /// <summary>
-        /// Adds the element property.
-        /// </summary>
-        /// <param name="pageType">Type of the page.</param>
-        /// <param name="propertyInfo">The property info.</param>
-        /// <returns>A tuple containing the get and set expressions.</returns>
-        private static Tuple<Func<IPage, Func<object, bool>, bool>, Action<IPage, object>> AddProperty(Type pageType, PropertyInfo propertyInfo)
+		/// <summary>
+		/// Adds the element property.
+		/// </summary>
+		/// <param name="pageType">Type of the page.</param>
+		/// <param name="propertyInfo">The property info.</param>
+		/// <returns>A tuple containing the get and set expressions.</returns>
+		protected static Tuple<Func<IPage, Func<object, bool>, bool>, Action<IPage, object>> AddProperty(Type pageType, PropertyInfo propertyInfo)
 		{
             Expression<Func<IPage, TPageBase>> nativePageFunc = p => p.GetNativePage<TPageBase>();
 			var pageArgument = Expression.Parameter(typeof(IPage), "page");
@@ -355,95 +438,20 @@ namespace SpecBind.Pages
             return new Tuple<Func<IPage, Func<object, bool>, bool>, Action<IPage, object>>(getExpression, setExpression);
 		}
 
-		/// <summary>
-		/// Gets the page element.
-		/// </summary>
-		/// <returns>The page element.</returns>
-		private ElementPropertyData<TElement> GetPageElement()
-		{
-			//Note the word 'page' as a property representing the element
-			return new ElementPropertyData<TElement>(this, "Page", this.PageType, (p, func) => func(this.GetNativePage<TElement>()));
-		}
-
-		/// <summary>
-		/// Gets the properties.
-		/// </summary>
-		private void GetProperties()
-		{
-			const BindingFlags Flags = BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public;
-
-			var pageType = this.PageType;
-
-			if (pageType == typeof(PageElement))
-			{
-				int test = 42;
-			}
-
-			var element = this.GetPageElement();
-			this.properties.Add(element.Name, element);
-
-            var locatorElement = this.GetNativePage<IElementProvider>();
-		    if (locatorElement != null)
-		    {
-		        foreach (var property in locatorElement.GetElements())
-		        {
-                    var propertyData = new ElementPropertyData<TElement>(
-                                            this, property.PropertyName, property.PropertyType, AddValueProperty(property));
-
-		            this.properties.Add(propertyData.Name, propertyData);
-		        }
-
-		        return;
-		    }
-
-			foreach (var propertyInfo in pageType.GetProperties(Flags).Where(
-                                                p => p.CanRead && (this.SupportedPropertyType(p.PropertyType) || p.PropertyType.IsElementListType()) && this.TypeIsNotBaseClass(p)))
-			{
-			    PropertyDataBase<TElement> propertyData;
-
-				if (typeof(TElement).IsAssignableFrom(propertyInfo.PropertyType))
-				{
-				    var elementHandler = AddElementProperty(pageType, propertyInfo);
-                    var elementPropertyData = new ElementPropertyData<TElement>(this, propertyInfo.Name, propertyInfo.PropertyType, elementHandler);
-
-                    // Check for any alias attributes and attempt to build additional properties
-                    this.CheckForVirtualProperties(propertyInfo, elementHandler);
-				    propertyData = elementPropertyData;
-				}
-                else if (propertyInfo.PropertyType.IsElementListType())
-				{
-                    var expressions = AddProperty(pageType, propertyInfo);
-                    propertyData = new ListPropertyData<TElement>(this, propertyInfo.Name, propertyInfo.PropertyType, expressions.Item1);
-			    }
-                else
-                {
-                    var expressions = AddProperty(pageType, propertyInfo);
-                    propertyData = new PagePropertyData<TElement>(
-                        this,
-                        propertyInfo.Name,
-                        propertyInfo.PropertyType,
-                        expressions.Item1,
-                        expressions.Item2);
-                }
-
-				this.properties.Add(propertyData.Name, propertyData);
-			}
-		}
-
         /// <summary>
         /// Checks for virtual properties and creates the structure for it.
         /// </summary>
         /// <param name="propertyInfo">The property information.</param>
         /// <param name="elementHandler">The property data.</param>
-        private void CheckForVirtualProperties(MemberInfo propertyInfo, Func<IPage, Func<TElement, bool>, bool> elementHandler)
+        protected void CheckForVirtualProperties(MemberInfo propertyInfo, Func<IPage, Func<TElement, bool>, bool> elementHandler)
         {
             foreach (var customAttribute in propertyInfo.GetCustomAttributes<VirtualPropertyAttribute>())
             {
                 var propertyName = customAttribute.Name.Trim();
-                if (!this.properties.ContainsKey(propertyName))
+                if (!this.Properties.ContainsKey(propertyName))
                 {
                     var softProperty = new VirtualPropertyData<TElement>(this, propertyName, elementHandler, customAttribute.Attribute);
-                    this.properties.Add(propertyName, softProperty);
+                    this.Properties.Add(propertyName, softProperty);
                 }
             }
         }

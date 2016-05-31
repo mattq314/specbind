@@ -14,7 +14,7 @@ namespace SpecBind.PropertyHandlers
     /// The property data for a given property.
     /// </summary>
     /// <typeparam name="TElement">The propertyValue of the element.</typeparam>
-    internal class ElementPropertyData<TElement> : PropertyDataBase<TElement>
+    public class ElementPropertyData<TElement> : PropertyDataBase<TElement>
     {
         private readonly Func<IPage, Func<TElement, bool>, bool> elementAction;
 
