@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
   <metadata>
     <id>SpecBindGeneratorPlugin.SpecFlow</id>
-    <version>$version$</version>
+    <version>1.9.30.1982</version>
     <title>SpecFlow SpecBind Attribute Generator Plugin</title>
     <authors>dpiessens</authors>
     <owners>dpiessens</owners>

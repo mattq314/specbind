@@ -49,5 +49,5 @@ namespace SpecBind.Plugin
         public void RegisterConfigurationDefaults(SpecFlowProjectConfiguration specFlowConfiguration)
         {
         }
-    }
+	}
 }
